@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mindrush.app",
+      "sha256_cert_fingerprints": [
+        "AE:D3:D9:B0:EE:D7:BE:7B:9F:31:5C:F7:9D:EC:28:95:6E:E4:3A:2C:0B:AB:EA:0D:48:4B:76:38:ED:2B:CE:18"
+      ]
+    }
+  }
+]

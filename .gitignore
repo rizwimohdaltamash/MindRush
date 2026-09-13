@@ -1,0 +1,76 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ---------------------------------------------------------------- MindRush
+# Signing secrets. These are the keys that prove a release build is yours;
+# leaking one lets somebody else publish an update to your app.
+*.jks
+*.keystore
+key.properties
+android/key.properties
+
+# Golden-test diff images, written only when a golden fails. Regenerated on
+# demand and worth megabytes -- never worth committing.
+test/failures/
+
+# Built artifacts that can land outside /build. Firebase Hosting also refuses
+# to serve executables on the free plan, so a stray one here breaks a deploy.
+*.apk
+*.aab
+*.apks
+hosting/public/*.apk
+
+# Local tooling and environment
+.vscode/
+*.env
+.env.*
+.fvm/
+.flutter-plugins
+**/android/local.properties
+
+# OS noise
+Thumbs.db
+desktop.ini

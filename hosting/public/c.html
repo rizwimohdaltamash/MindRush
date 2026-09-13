@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MindRush duel</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #0B0B10; color: #F2F2F5; text-align: center;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { padding: 32px 24px; max-width: 420px; }
+  h1 { font-size: 26px; font-weight: 800; margin: 0 0 6px; letter-spacing: -.4px; }
+  .who { color: #F5C518; }
+  .mark { font-size: 54px; line-height: 1; margin: 24px 0 8px; }
+  .label { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #8A8A99; }
+  a.btn {
+    display: block; margin-top: 26px; padding: 15px; border-radius: 14px;
+    background: #F5C518; color: #0B0B10; font-weight: 800; text-decoration: none;
+  }
+  a.ghost {
+    margin-top: 12px; background: transparent; color: #F2F2F5;
+    border: 1px solid #2A2A35; font-weight: 600;
+  }
+  p.note { margin-top: 20px; font-size: 13px; color: #8A8A99; }
+  [hidden] { display: none !important; }
+</style>
+<main>
+  <h1><span class="who" id="who">A friend</span> challenged you</h1>
+  <div class="label" id="mode">MindRush</div>
+  <div class="mark">&#9876;</div>
+  <div class="label">they are waiting in the lobby</div>
+
+  <a class="btn" id="open" href="#">Open in MindRush</a>
+  <a class="btn ghost" id="install" href="#" hidden>Install MindRush</a>
+
+  <p class="note" id="note">
+    Do not have it yet? Ask <span class="who" id="who2">them</span> to send you
+    the app, install it, pick a name, and you will land straight in this lobby.
+  </p>
+  <p class="note">
+    The match starts the moment you are both in &mdash; same questions, same
+    sixty seconds, side by side.
+  </p>
+</main>
+<script>
+  // ---------------------------------------------------------------------
+  // Where the APK lives. Firebase Hosting refuses to serve executables on
+  // the Spark (free) plan, so the app cannot sit next to this page. Paste a
+  // direct download link here -- Google Drive, Dropbox, a GitHub release --
+  // and the Install button appears. Left empty, the page tells the visitor
+  // to ask the person who invited them, which is the honest fallback rather
+  // than a button that goes nowhere.
+  var INSTALL_URL = '';
+  // ---------------------------------------------------------------------
+
+  // Everything shown here comes out of the link itself; the room document is
+  // what the two phones actually play against.
+  var params = new URLSearchParams(location.search);
+  var code = location.pathname.split('/').filter(Boolean).pop() || '';
+  var modes = {
+    sprint: 'Sprint Duels',
+    fastestFingers: 'Fastest Fingers',
+    mindSnap: 'Mind Snap',
+    ability: 'Ability Duels'
+  };
+  var by = (params.get('by') || '').trim();
+  if (by) {
+    document.getElementById('who').textContent = by;
+    document.getElementById('who2').textContent = by;
+  }
+  document.getElementById('mode').textContent =
+    modes[code.split('-')[0]] || 'MindRush';
+
+  // The custom scheme works on a sideloaded build even before assetlinks.json
+  // is deployed, so this button is the fallback that always has a chance.
+  document.getElementById('open').href =
+    'mindrush://c/' + code + location.search;
+
+  if (INSTALL_URL) {
+    var install = document.getElementById('install');
+    install.href = INSTALL_URL;
+    install.hidden = false;
+    document.getElementById('note').hidden = true;
+  }
+</script>
