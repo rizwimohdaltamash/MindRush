@@ -13,6 +13,8 @@ import 'package:mind_rush/router/app_router.dart';
 import 'package:mind_rush/state/providers.dart';
 import 'package:mind_rush/ui/theme.dart';
 
+import 'support/fake_sign_in.dart';
+
 /// A camera that hands back whatever the test says it does.
 class FakePhotos implements PhotoSource {
   FakePhotos([this.result]);
@@ -45,6 +47,9 @@ void main() {
       gameStoreProvider.overrideWithValue(store),
       randomProvider.overrideWithValue(Random(3)),
       photoSourceProvider.overrideWithValue(photos ?? const NoPhotoSource()),
+      // Signing out reaches the gateway, and the real one is the default now.
+      // Left alone, this test would try to talk to the Google plugin.
+      signInGatewayProvider.overrideWithValue(FakeSignIn()),
       if (scheduler != null)
         reminderSchedulerProvider.overrideWithValue(scheduler),
     ],
@@ -244,9 +249,8 @@ void main() {
 
   group('signing out', () {
     testWidgets('says what it costs before doing it', (tester) async {
-      // There is no password behind an anonymous account, so this is not a
-      // door that can be walked back through. Saying anything softer would
-      // be a lie.
+      // The account survives -- it is a Google one now -- but this phone's
+      // copy does not, and a player deserves to know that before they tap.
       final store = named('Naman');
       await openSettings(tester, store);
 
@@ -255,7 +259,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Sign out?'), findsOneWidget);
-      expect(find.textContaining('no password'), findsOneWidget);
+      expect(
+        find.textContaining('clears MindRush off this phone'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('same Google account'), findsOneWidget);
       expect(
         store.loadProfile().displayName,
         'Naman',

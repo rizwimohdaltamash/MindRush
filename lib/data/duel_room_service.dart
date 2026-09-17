@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../core/challenge/duel_room.dart';
-import 'anonymous_auth.dart';
+
 import 'error_report.dart';
 
 /// Why a room could not be opened or joined.
@@ -63,13 +64,13 @@ class FirestoreDuelRooms implements DuelRoomService {
   @override
   final String myUid;
 
-  /// Signs in anonymously and returns a service, or null when there is no
-  /// network, no project, or no signal. A friend duel genuinely cannot happen
-  /// without a connection, so the caller's job is to say so plainly rather
-  /// than to quietly substitute something else.
+  /// A service for whoever is signed in, or null when nobody is -- and null
+  /// when there is no network, no project, or no signal. A friend duel
+  /// genuinely cannot happen without either, so the caller's job is to say so
+  /// plainly rather than to quietly substitute something else.
   static Future<FirestoreDuelRooms?> connect() async {
     try {
-      final user = await signedInAnonymously();
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) return null;
       return FirestoreDuelRooms(
         FirebaseFirestore.instance.collection('duels'),

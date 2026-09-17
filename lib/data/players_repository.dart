@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../core/bots/bot_profile.dart';
 import '../core/players/player_record.dart';
-import 'anonymous_auth.dart';
 import 'cloud_status.dart';
 import 'error_report.dart';
 import 'match_summary.dart';
@@ -81,9 +80,10 @@ abstract class PlayerService {
 
   /// Throws this device's anonymous credential away.
   ///
-  /// There is no password behind it, so this is not a door that can be walked
-  /// back through: the next launch makes a new account with a new uid. The
-  /// caller is responsible for having cleared the player's data first.
+  /// The Google account stays; what ends is this device's session with it.
+  /// Signing back in with the same account returns the same uid, and with it
+  /// the ratings, streak and history the cloud was holding. The caller is
+  /// responsible for having cleared the local copy first.
   Future<void> signOut();
 }
 
@@ -190,13 +190,15 @@ class FirestorePlayers implements PlayerCloud, PlayerService {
   DocumentReference<Map<String, dynamic>> get _private =>
       _me.collection('private').doc('state');
 
-  /// Signs in anonymously and returns a repository, or null if anything at
-  /// all goes wrong. Nobody should have to make an account to try a demo, and
-  /// nobody should be stuck on a spinner because a network was unreachable.
+  /// A repository for whoever is signed in, or null when nobody is.
+  ///
+  /// Signing in is the welcome screen's job now, not this one's. A player who
+  /// has never signed in still gets the whole game from local storage; what
+  /// they do not get is a row on the leaderboard, which is correct, because
+  /// there is no durable identity to put on it.
   static Future<FirestorePlayers?> connect({CloudMonitor? monitor}) async {
     try {
-      // Verified, not merely fetched from the cache: see signedInAnonymously.
-      final credential = await signedInAnonymously();
+      final credential = FirebaseAuth.instance.currentUser;
       if (credential == null) return null;
       monitor?.signedIn(credential.uid);
       final db = FirebaseFirestore.instance;

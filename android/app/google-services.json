@@ -12,7 +12,20 @@
           "package_name": "com.mindrush.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "279536954313-p7tmjnp315f7oa56eka5l6r2ratm1b6a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mindrush.app",
+            "certificate_hash": "66a82252f8957016dff2965bb08350204433033e"
+          }
+        },
+        {
+          "client_id": "279536954313-9e3tiehpl8bunagullpuukh8smefni9o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD2wjdETBu0ztXqrAm813dEz39nD-QquZc"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "279536954313-9e3tiehpl8bunagullpuukh8smefni9o.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "279536954313-12bprhm456ltr729bhpgsnf7nf945tfc.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mindRush"
+              }
+            }
+          ]
         }
       }
     }

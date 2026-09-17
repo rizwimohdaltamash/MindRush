@@ -11,7 +11,10 @@ import 'package:mind_rush/data/game_store.dart';
 import 'package:mind_rush/main.dart';
 import 'package:mind_rush/state/providers.dart';
 
+import 'package:mind_rush/data/sign_in.dart';
+
 import 'support/fake_rooms.dart';
+import 'support/fake_sign_in.dart';
 
 /// The journey of someone who has never heard of MindRush: a WhatsApp link
 /// arrives, they install the app, and the link has to still be waiting for
@@ -41,6 +44,11 @@ void main() {
 
   Widget app(GameStore store, {String? launchRoute}) => ProviderScope(
     overrides: [
+      signInGatewayProvider.overrideWithValue(
+        FakeSignIn(
+          user: const SignedInUser(uid: 'uid-guest', name: 'Aarav'),
+        ),
+      ),
       gameStoreProvider.overrideWithValue(store),
       randomProvider.overrideWithValue(Random(2)),
       duelRoomServiceProvider.overrideWithValue(guestPhone),
@@ -81,7 +89,7 @@ void main() {
 
     // The name prompt comes first even though a duel is waiting: a player with
     // no name would join the room as an empty seat with a face and no person.
-    expect(find.text('WHAT SHOULD WE CALL YOU?'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
     expect(
       backend.rooms[room.code]!.guest,
       isNull,
@@ -97,9 +105,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Aarav');
     await tester.pump();
-    await tester.tap(find.text('Start playing'));
+    await tester.tap(find.text('Continue with Google'));
     await tick(tester);
 
     // The link survived the intro and the name prompt.
@@ -116,9 +123,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Aarav');
     await tester.pump();
-    await tester.tap(find.text('Start playing'));
+    await tester.tap(find.text('Continue with Google'));
     await tick(tester);
 
     final seated = backend.rooms[room.code]!;
@@ -140,9 +146,8 @@ void main() {
     // First launch: install and name yourself.
     await tester.pumpWidget(app(store));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Aarav');
     await tester.pump();
-    await tester.tap(find.text('Start playing'));
+    await tester.tap(find.text('Continue with Google'));
     await tester.pumpAndSettle();
 
     // Second launch, this time from a tapped link.
@@ -151,8 +156,28 @@ void main() {
     // Long enough for the intro animation to run before the router appears.
     await tick(tester, 100);
 
-    expect(find.text('WHAT SHOULD WE CALL YOU?'), findsNothing);
+    expect(find.text('Continue with Google'), findsNothing);
     expect(backend.rooms[room.code]!.guest?.name, 'Aarav');
+  });
+
+  testWidgets('a launch route that is not a challenge is ignored', (
+    tester,
+  ) async {
+    // Signing in with Google landed the player on the settings screen. The
+    // launch route was being read on first use rather than at startup, and
+    // first use is building the router -- which happens after onboarding, by
+    // which point an account picker has been and gone and the platform's
+    // answer is no longer where the player asked to go.
+    //
+    // A challenge link is the only thing worth opening anywhere but home.
+    usePhoneScreen(tester);
+    await tester.pumpWidget(app(InMemoryGameStore(), launchRoute: '/settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue with Google'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DUELS'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
   });
 
   testWidgets('an ordinary launch still opens on home', (tester) async {
@@ -162,9 +187,8 @@ void main() {
     await tester.pumpWidget(app(InMemoryGameStore()));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Aarav');
     await tester.pump();
-    await tester.tap(find.text('Start playing'));
+    await tester.tap(find.text('Continue with Google'));
     await tester.pumpAndSettle();
 
     expect(find.text('DUELS'), findsOneWidget);

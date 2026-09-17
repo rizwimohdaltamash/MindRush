@@ -14,6 +14,7 @@ A mobile quiz-duel game built in Flutter — four game modes, simulated opponent
 ![GoRouter](https://img.shields.io/badge/GoRouter-00B0FF?style=for-the-badge&logo=flutter&logoColor=white)
 ![Hive](https://img.shields.io/badge/Hive_CE-FFC107?style=for-the-badge&logo=databricks&logoColor=black)
 ![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)
+![Google Sign-In](https://img.shields.io/badge/Google_Sign--In-4285F4?style=for-the-badge&logo=google&logoColor=white)
 ![Firestore](https://img.shields.io/badge/Cloud_Firestore-F57C00?style=for-the-badge&logo=firebase&logoColor=white)
 ![Crashlytics](https://img.shields.io/badge/Crashlytics-E65100?style=for-the-badge&logo=firebase&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
@@ -206,7 +207,7 @@ lib/
 │   ├── questions/     deterministic question generators, one per mode
 │   ├── rating/        rating maths, daily streak, streak rewards
 │   └── players/       the player directory and presence rule
-├── data/          Hive, Firestore, anonymous auth, error reporting
+├── data/          Hive, Firestore, Google sign-in, error reporting
 ├── state/         Riverpod providers — the seam between data and UI
 ├── notifications/ streak reminders, scheduled on device
 ├── router/        GoRouter routes, including the deep link
@@ -255,6 +256,8 @@ sequenceDiagram
 
 ## Design decisions worth knowing
 
+**You are your Google account, not a name you typed.** Identity used to live on the device, which meant uninstalling the app orphaned your leaderboard row and made a second one next time — the same person, twice, with their rating split between them. A Google account is the same account on the next install and on the next phone, so the board stays honest. Only the first launch needs a network for it; the credential is cached, and a returning player opens the app offline with everything intact.
+
 **The match engine has no clock.** The screen owns a `Ticker` and pushes elapsed milliseconds into the engine with `advanceTo(ms)`. Time is an input rather than something the engine reaches out and grabs, which keeps every rule of the match independent of how, or how fast, the clock actually runs.
 
 **Bots are simulated, not scripted.** A bot's entire minute is generated up front as timestamped scoring events. Its *form* is rolled once per match rather than per question, so it has a good day or a bad day the way a person does — the giveaway of a fake opponent is consistency, not the name on the scoreboard.
@@ -265,6 +268,8 @@ sequenceDiagram
 
 **Notifications need no server.** The phone knows your streak, so it reminds itself. The reminder always sits one day after your last match, rescheduled after every match — no push service, no background job, works in airplane mode.
 
+**The intro is the intro, not a loading screen wearing one.** `main()` awaits nothing before `runApp`, because Android holds its own splash until Flutter draws its first frame — so every await there was time spent looking at a still picture of the logo instead of the animation of it. Opening the local save happens *behind* the intro, and Firebase waits until it is over rather than competing with it for frames on the coldest start the app ever has.
+
 **Swallowed errors are still reported.** Roughly 27 places catch an error and carry on, which is correct behaviour but means the app can be quietly broken. Each one calls a reporting seam that forwards to Crashlytics as a non-fatal, with ordinary network noise filtered out.
 
 ---
@@ -273,15 +278,19 @@ sequenceDiagram
 
 ```bash
 flutter pub get
-flutter run                    # debug, on a connected device
-flutter analyze                # lints
-flutter build apk --release    # → build/app/outputs/flutter-apk/
+flutter run --release                      # on a connected device
+flutter analyze                            # lints
+flutter build apk --release --split-per-abi   # → build/app/outputs/flutter-apk/
 ```
 
-Firebase is optional in development — without it the app runs single-player on local storage, which is a deliberate fallback rather than a crash. To enable the cloud half, add your own `android/app/google-services.json` and regenerate `lib/firebase_options.dart`.
+**Use a release build to judge how it feels.** A debug build is JIT-compiled and spends its first couple of seconds warming the engine up and compiling shaders — which is exactly the window the intro animation plays in, so it arrives as a stutter. Breakpoints need debug; motion needs release.
+
+`--split-per-abi` builds one APK per architecture (~21 MB) instead of one carrying all three (~57 MB). Install `app-arm64-v8a-release.apk` on any phone from the last several years.
+
+Firebase is optional in development — without it the app runs single-player on local storage, which is a deliberate fallback rather than a crash. To enable the cloud half, add your own `android/app/google-services.json` and regenerate `lib/firebase_options.dart`. Google sign-in additionally needs your signing certificate's SHA-1 registered on the Firebase project, and the **web** OAuth client id (not the Android one) as the `serverClientId`.
 
 ---
 
 <div align="center">
-<sub>Built with Flutter · 68 source files · 13,000 lines of Dart</sub>
+<sub>Built with Flutter · 68 source files · 13,800 lines of Dart</sub>
 </div>

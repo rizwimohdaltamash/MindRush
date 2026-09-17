@@ -28,6 +28,10 @@ class _StreakFlareState extends State<StreakFlare>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: StreakFlare.duration,
+    // The flare is the reward, not a transition into one. A phone with
+    // system animations off would run it in ninety-five milliseconds, which
+    // is not a smaller celebration, it is no celebration.
+    animationBehavior: AnimationBehavior.preserve,
   )..forward();
 
   @override

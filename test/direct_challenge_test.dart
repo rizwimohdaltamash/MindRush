@@ -121,6 +121,85 @@ void main() {
   GameStore named(String name) =>
       InMemoryGameStore()..saveProfile(PlayerProfile.fresh(name: name));
 
+  group('a guest arriving before the cloud is up', () {
+    /// The app with no room service at all, which is what a tapped link
+    /// actually lands in: the lobby is built the moment the app is, and
+    /// Firebase is still starting behind it.
+    Widget cloudless(GameStore store, GoRouter router) => ProviderScope(
+      overrides: [
+        gameStoreProvider.overrideWithValue(store),
+        randomProvider.overrideWithValue(Random(5)),
+      ],
+      child: MaterialApp.router(theme: buildTheme(), routerConfig: router),
+    );
+
+    ProviderContainer containerIn(WidgetTester tester) =>
+        ProviderScope.containerOf(
+          tester.element(find.byType(MaterialApp).first),
+        );
+
+    testWidgets('is not told to check their connection', (tester) async {
+      usePhoneScreen(tester);
+      await FakeRooms(backend, _hostUid).create(_invite(invitedUid: null));
+
+      final router = buildRouter(
+        initialLocation: AppRoutes.challenge('mindSnap-849213'),
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(cloudless(named('Aarav'), router));
+      await tester.pump();
+
+      // The screen used to give up here, on the one player who most needs it
+      // to work. Waiting is the honest answer: nothing has failed yet.
+      expect(find.textContaining('internet connection'), findsNothing);
+    });
+
+    testWidgets('takes the seat once Firebase finishes starting', (
+      tester,
+    ) async {
+      usePhoneScreen(tester);
+      await FakeRooms(backend, _hostUid).create(_invite(invitedUid: null));
+
+      final router = buildRouter(
+        initialLocation: AppRoutes.challenge('mindSnap-849213'),
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(cloudless(named('Aarav'), router));
+      await tester.pump();
+      expect(backend.rooms['mindSnap-849213']?.guest, isNull);
+
+      // A second and a half later, the cloud arrives.
+      await tester.pump(const Duration(milliseconds: 1500));
+      containerIn(
+        tester,
+      ).read(runtimeProvider.notifier).arrived(
+        rooms: FakeRooms(backend, _guestUid),
+      );
+      await tester.pumpAndSettle();
+
+      expect(backend.rooms['mindSnap-849213']?.guest?.uid, _guestUid);
+    });
+
+    testWidgets('gives up if it really never comes', (tester) async {
+      usePhoneScreen(tester);
+      await FakeRooms(backend, _hostUid).create(_invite(invitedUid: null));
+
+      final router = buildRouter(
+        initialLocation: AppRoutes.challenge('mindSnap-849213'),
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(cloudless(named('Aarav'), router));
+      await tester.pump(const Duration(seconds: 13));
+      await tester.pumpAndSettle();
+
+      // Waiting for ever would be its own kind of broken.
+      expect(find.textContaining('internet connection'), findsOneWidget);
+    });
+  });
+
   group('a challenge that arrives', () {
     testWidgets('is put in front of the player wherever they are', (
       tester,

@@ -47,19 +47,57 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   /// being tracked before the first question appears.
   final LiveOpponentFeed _feed = LiveOpponentFeed();
 
+  /// Watches for the room service turning up, when it is not up yet.
+  ProviderSubscription<DuelRoomService?>? _waiting;
+
+  /// Stops that wait being forever.
+  Timer? _patience;
+
+  /// How long the cloud is given to arrive before this screen says it cannot
+  /// be done.
+  ///
+  /// Generous on purpose. Nothing here is a network request yet -- it is
+  /// waiting on Firebase to start and sign in, which on a cold start is a
+  /// second or two of plugin registration before any packet moves.
+  static const Duration _patienceFor = Duration(seconds: 12);
+
   @override
   void initState() {
     super.initState();
+
     final service = ref.read(duelRoomServiceProvider);
-    if (service == null) {
-      // Said plainly rather than worked around. Two people cannot share a
-      // minute without a network, and quietly swapping in a bot would be a lie
-      // about who the player just beat.
-      _error = 'Friend duels need an internet connection.';
+    if (service != null) {
+      unawaited(_connect(service));
       return;
     }
-    unawaited(_connect(service));
+
+    // Not up *yet* is not the same as not available, and this screen used to
+    // treat them as the same thing. A guest arriving on a tapped link gets
+    // here the instant the app is built, which is before Firebase has
+    // finished starting -- so the one player who most needs this screen to
+    // work was the one being told to check their connection. It now waits for
+    // the service and only gives up when it really does not come.
+    _patience = Timer(_patienceFor, () {
+      if (mounted && _subscription == null) {
+        setState(() => _error = _noConnection);
+      }
+    });
+
+    _waiting = ref.listenManual<DuelRoomService?>(duelRoomServiceProvider, (
+      previous,
+      next,
+    ) {
+      if (next == null || !mounted || _subscription != null) return;
+      _patience?.cancel();
+      unawaited(_connect(next));
+    });
   }
+
+  /// Said plainly rather than worked around. Two people cannot share a minute
+  /// without a network, and quietly swapping in a bot would be a lie about
+  /// who the player just beat.
+  static const String _noConnection =
+      'Friend duels need an internet connection.';
 
   Future<void> _connect(DuelRoomService service) async {
     if (widget.join) {
@@ -148,13 +186,17 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _waiting?.close();
+    _patience?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final room = _room;
-    final service = ref.read(duelRoomServiceProvider);
+    // Watched, not read: this is null until the cloud is up, and the rows
+    // below need rebuilding when it stops being null.
+    final service = ref.watch(duelRoomServiceProvider);
     final mine = service == null ? null : room?.me(service.myUid);
     final theirs = service == null ? null : room?.opponentOf(service.myUid);
 

@@ -1,27 +1,51 @@
 rules_version = '2';
 
+// The collections this app actually uses. The previous version of this file
+// named a `presence` collection that no longer exists and never mentioned
+// `players`, which is where the leaderboard, the online dot and every match
+// record live -- so deploying it would have locked the app out of its own
+// data, quietly, everywhere at once.
+//
+// These are not necessarily what the project is running right now: the live
+// rules are whatever was last pushed from the Firebase console. Compare the
+// two before deploying either.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // A player's own save. Nobody else can read or touch it.
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // A player's public row: name, avatar, ratings, streak, last seen.
+    // Readable by anyone signed in, because that is the leaderboard and the
+    // green dot; writable only by the person it describes.
+    match /players/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      // Match history, hung under the row it belongs to.
+      match /matches/{matchId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // The half of the save nobody else has any business reading.
+      match /private/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
-    // A friend duel. Both players read and write the same document.
+    // A friend duel. Both players read and write the same document, and
+    // neither is the guest until they have joined, so the write has to be
+    // open to any signed-in player -- the room code is the secret.
+    //
+    // Deletion is closed: a room that vanished mid-match would leave the
+    // other phone watching a document that will never arrive.
     match /duels/{code} {
       allow read, create, update: if request.auth != null;
       allow delete: if false;
     }
 
-    // Who is online, and nothing else: a heartbeat, a name and an avatar.
-    // Readable by anyone signed in so a friend can see the green dot; only
-    // ever writable by the person it describes. Deliberately a separate
-    // collection from /users so opening presence up does not open a player's
-    // whole save with it.
-    match /presence/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+    // The old whole-save document, still read once on upgrade so a player
+    // who has not opened the app since the move keeps their history.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }

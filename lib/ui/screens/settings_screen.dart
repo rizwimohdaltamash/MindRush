@@ -156,7 +156,7 @@ class SettingsScreen extends ConsumerWidget {
             _DangerButton(
               icon: Icons.logout_rounded,
               label: 'Sign out',
-              detail: 'Ends this device\'s account',
+              detail: 'Clears this phone; your account keeps your progress',
               onTap: () => _confirmSignOut(context, ref),
             ),
             const SizedBox(height: 10),
@@ -185,10 +185,9 @@ class SettingsScreen extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: const Text('Sign out?'),
         content: const Text(
-          'Your MindRush account lives on this phone only — there is no '
-          'password to sign back in with. Signing out deletes it, along with '
-          'your ratings, streak and match history.\n\n'
-          'You will start again with a new name.',
+          'This clears MindRush off this phone — your ratings, streak and '
+          'match history all go with it.\n\n'
+          'Signing back in with the same Google account brings them back.',
         ),
         actions: [
           TextButton(

@@ -25,6 +25,7 @@ import 'package:mind_rush/ui/widgets/streak_flare.dart';
 import 'package:mind_rush/ui/theme.dart';
 
 import 'support/fake_rooms.dart';
+import 'support/fake_sign_in.dart';
 import 'support/test_fonts.dart';
 
 /// Renders each screen to a PNG so the UI can actually be looked at rather
@@ -126,6 +127,7 @@ void main() {
         overrides: [
           gameStoreProvider.overrideWithValue(InMemoryGameStore()),
           randomProvider.overrideWithValue(Random(7)),
+          signInGatewayProvider.overrideWithValue(FakeSignIn()),
         ],
         child: MaterialApp(
           theme: buildTheme(),

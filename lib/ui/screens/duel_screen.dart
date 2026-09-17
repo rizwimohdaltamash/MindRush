@@ -117,6 +117,11 @@ class _DuelScreenState extends ConsumerState<DuelScreen>
       AnimationController(
         vsync: this,
         duration: DuelScreen.grace,
+        // This one is not decoration: when it completes, the match is called
+        // off. On a phone with system animations turned off every controller
+        // runs at five per cent, which quietly turned the five seconds a
+        // player gets to prove they are still there into a quarter of one.
+        animationBehavior: AnimationBehavior.preserve,
       )..addStatusListener((status) {
         if (status == AnimationStatus.completed && _asking) unawaited(_abort());
       });
@@ -133,6 +138,11 @@ class _DuelScreenState extends ConsumerState<DuelScreen>
       AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: kMindSnapVanishMs),
+        // The bot's pacing counts this beat in, so the clock it keeps has to
+        // be the same one the player watches. Left to shrink on a phone with
+        // animations off, the two drift apart and the bot answers a pattern
+        // that is still vanishing.
+        animationBehavior: AnimationBehavior.preserve,
       )..addStatusListener((status) {
         // The next pattern arrives on the frame the last one finishes
         // leaving. Hung off the controller rather than a callback on

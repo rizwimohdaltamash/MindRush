@@ -13,6 +13,7 @@ import '../data/duel_room_service.dart';
 import '../data/error_report.dart';
 import '../data/cloud_status.dart';
 import '../data/photo_source.dart';
+import '../data/sign_in.dart';
 import '../data/players_repository.dart';
 import '../data/game_store.dart';
 import '../data/match_summary.dart';
@@ -26,6 +27,21 @@ final gameStoreProvider = Provider<GameStore>(
 );
 
 final randomProvider = Provider<Random>((ref) => Random());
+
+/// How the player signs in: the real Google flow, by default.
+///
+/// It is the default rather than something `main()` has to remember to
+/// install, because the failure mode of forgetting was silent and looked
+/// exactly like a broken app -- the button would do nothing and then blame
+/// the player's connection. The thing that works is what ships; a test that
+/// wants no platform channel behind it says so, and has to say so out loud.
+///
+/// Nothing happens here at construction. Firebase is started and the Google
+/// plugin initialised on the first tap, so holding one of these costs
+/// nothing on a platform that has neither.
+final signInGatewayProvider = Provider<SignInGateway>(
+  (ref) => GoogleSignInGateway(),
+);
 
 /// Where an avatar photograph comes from. Overridden in main() with the
 /// device camera and photo picker; the default one always cancels, so tests
@@ -197,12 +213,17 @@ class ProfileNotifier extends Notifier<PlayerProfile> {
   /// a name nobody can log into again.
   Future<void> signOut() async {
     final service = ref.read(playerServiceProvider);
+    final gateway = ref.read(signInGatewayProvider);
     await resetEverything();
     try {
+      // The row comes off the board first, while the credential still works.
       await service?.signOut();
+      // Then Google, so the next sign-in offers an account picker rather than
+      // silently returning the account that was just signed out of.
+      await gateway.signOut();
     } catch (error, stack) {
       // Already signed out, or no network. The save is cleared either way,
-      // and the next launch makes a new account.
+      // and the welcome screen is what a player with no name is shown.
       Report.swallowed(error, stack, 'could not sign out');
     }
   }

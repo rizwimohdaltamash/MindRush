@@ -52,7 +52,17 @@ void main() {
     var finished = false;
     await tester.pumpWidget(wrap(() => finished = true));
 
-    // Early: the ring is still drawing and the name has not arrived.
+    // The very first frame Flutter draws. It must not be empty: Android is
+    // showing its own still picture of the mark right up until this frame,
+    // so a blank one makes the icon blink out of existence before the
+    // animation starts. The three arcs are already here, out on their
+    // bearings, at full strength.
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/splash_first.png'),
+    );
+
+    // Early: the arcs are on their way in and the name has not arrived.
     await tester.pump(const Duration(milliseconds: 200));
     await expectLater(
       find.byType(MaterialApp),

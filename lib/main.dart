@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/challenge/challenge_link.dart';
 import 'data/cloud_sync.dart';
 import 'data/deferred_cloud.dart';
 import 'data/photo_source.dart';
@@ -22,44 +25,121 @@ import 'ui/screens/welcome_screen.dart';
 import 'ui/widgets/presence_heartbeat.dart';
 import 'ui/theme.dart';
 
-Future<void> main() async {
+/// Nothing is awaited here, and that is the whole point.
+///
+/// Tapping the icon used to put the still launcher mark on screen for a
+/// couple of seconds before the intro began. That gap was not the phone being
+/// slow: it was this function. The OS holds its own splash until Flutter
+/// draws its first frame, and Flutter cannot draw a first frame until [main]
+/// reaches [runApp] -- so every await here was time the player spent looking
+/// at a photograph of the logo instead of the animation of it.
+///
+/// Opening the local save is a plugin channel call for the documents
+/// directory and two boxes read off the disk; the orientation lock is another
+/// channel round trip. Neither is slow on its own, and together, on a cold
+/// start with the engine still warming up, they were most of that gap. Both
+/// now happen underneath the intro rather than in front of it.
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Locks the app in portrait mode so the screen doesn't rotate if the user
-  // turns their phone sideways.
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // turns their phone sideways. Fire and forget: a frame or two in landscape
+  // on a phone nobody is holding sideways is not worth a millisecond of the
+  // launch.
+  unawaited(
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
+  );
 
-  // The one thing worth waiting for: the local database, where the player's
-  // name, ratings and streak live. It opens off the disk in a few
-  // milliseconds and it is the source of truth, so the app is genuinely
-  // ready once it is here.
-  final GameStore local = await GameStore.open();
+  runApp(const Boot());
+}
 
-  // Everything else -- Firebase, signing in, fetching the player's row, the
-  // notification plugin -- used to be awaited here too, which meant the app
-  // sat on a black screen through three network round trips before it drew
-  // anything. On bad wifi that was seconds. It now happens behind the intro,
-  // through this stand-in, which keeps anything written in the meantime and
-  // replays it the moment the real cloud arrives.
-  final cloud = DeferredCloud();
-  final monitor = CloudMonitor();
-  final store = SyncedGameStore(local, cloud);
+/// The first thing Flutter draws, and what it draws while getting ready.
+///
+/// The intro plays immediately. Behind it the local save opens -- the
+/// database holding the player's name, ratings and streak, and the source of
+/// truth for all of it -- and the app proper is built once both the animation
+/// has finished and the save is in hand.
+///
+/// In practice the save wins that race by well over a second, so the intro is
+/// never waited on and never cut short. Holding for whichever finishes last
+/// is what makes that a fact rather than a hope.
+class Boot extends StatefulWidget {
+  const Boot({super.key});
 
-  runApp(
-    ProviderScope(
+  @override
+  State<Boot> createState() => _BootState();
+}
+
+class _BootState extends State<Boot> {
+  SyncedGameStore? _store;
+  DeferredCloud? _cloud;
+  CloudMonitor? _monitor;
+
+  /// The animated intro plays once per launch, then never gets in the way.
+  bool _introFinished = false;
+
+  /// Where the app was asked to open, read on the first frame of the first
+  /// widget there is.
+  ///
+  /// This has to happen here rather than in [MindRushApp], because
+  /// [MindRushApp] is not built until the intro is over and the save is open
+  /// -- a couple of seconds in, by which point a tapped invite is old news.
+  /// A guest arriving from WhatsApp is the whole reason any of this exists,
+  /// so the one thing that carries them is read before anything else runs.
+  String? _launchRoute;
+
+  @override
+  void initState() {
+    super.initState();
+    _launchRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    unawaited(_openTheSave());
+  }
+
+  Future<void> _openTheSave() async {
+    final local = await GameStore.open();
+    if (!mounted) return;
+
+    // Firebase, signing in, fetching the player's row, the notification
+    // plugin -- none of it is waited for. It happens through this stand-in,
+    // which keeps anything written in the meantime and replays it the moment
+    // the real cloud arrives.
+    final cloud = DeferredCloud();
+    final monitor = CloudMonitor();
+    setState(() {
+      _cloud = cloud;
+      _monitor = monitor;
+      _store = SyncedGameStore(local, cloud);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = _store;
+    if (!_introFinished || store == null) {
+      return MaterialApp(
+        title: 'MindRush',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(),
+        home: SplashScreen(
+          onFinished: () => setState(() => _introFinished = true),
+        ),
+      );
+    }
+
+    return ProviderScope(
       overrides: [
         gameStoreProvider.overrideWithValue(store),
-        cloudMonitorProvider.overrideWithValue(monitor),
+        cloudMonitorProvider.overrideWithValue(_monitor!),
         photoSourceProvider.overrideWithValue(DevicePhotoSource()),
       ],
       child: CloudBoot(
-        cloud: cloud,
+        cloud: _cloud!,
         store: store,
-        monitor: monitor,
-        child: const MindRushApp(),
+        monitor: _monitor!,
+        child: MindRushApp(launchRoute: _launchRoute),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Connects everything that could not be waited for, then switches it on.
@@ -87,18 +167,71 @@ class CloudBoot extends ConsumerStatefulWidget {
 }
 
 class _CloudBootState extends ConsumerState<CloudBoot> {
+  StreamSubscription<User?>? _authSub;
+  bool _connecting = false;
+
   @override
   void initState() {
     super.initState();
     // Deliberately not awaited anywhere: every one of these is a feature the
     // app is expected to run without.
-    unawaited(_connect());
+    unawaited(_afterTheIntro());
+  }
+
+  /// Holds everything heavy back until the first real screen has settled.
+  ///
+  /// Starting Firebase is a platform-channel round trip and a pile of plugin
+  /// registration, and the notification plugin loads the whole timezone
+  /// database. Both used to run underneath the intro -- which is the one
+  /// moment in the app's life with the least frame budget to spare, because
+  /// the engine is still warming up and every shader is being compiled for
+  /// the first time. Dropped frames there are the ones a player actually
+  /// notices, since there is nothing on screen but movement.
+  ///
+  /// [Boot] only builds this once the intro is over, so most of that is
+  /// already avoided; the beat on top of it is for the screen underneath to
+  /// draw before anything lands on the platform thread.
+  ///
+  /// Nothing is lost by waiting: the local save is open, so the app is fully
+  /// playable, and the cloud connects a moment later than it used to -- by
+  /// which point the player is still reading the home screen.
+  Future<void> _afterTheIntro() async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    unawaited(_watchForSignIn());
     unawaited(_prepareReminders());
   }
 
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
+  /// Starts Firebase, then connects the cloud whenever there is somebody to
+  /// connect it for.
+  ///
+  /// Listened for rather than done once at launch, because signing in happens
+  /// on the welcome screen -- which is drawn after this runs. A returning
+  /// player's cached credential arrives on the first event and connects
+  /// immediately; a brand new one connects the moment they finish with the
+  /// account picker.
+  Future<void> _watchForSignIn() async {
+    if (!await _startFirebase(widget.monitor)) return;
+    if (!mounted) return;
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) unawaited(_connect());
+    });
+  }
+
   Future<void> _connect() async {
-    final players = await _connectPlayers(widget.monitor);
-    if (players == null) return;
+    if (_connecting || !mounted) return;
+    _connecting = true;
+    final players = await FirestorePlayers.connect(monitor: widget.monitor);
+    if (players == null) {
+      _connecting = false;
+      return;
+    }
 
     // The catch-up that used to happen before the first frame: adopt the
     // cloud's copy if it is newer than this device's, then send ours up.
@@ -138,18 +271,22 @@ bool isJustTheNetwork(Object error) =>
       'aborted',
     }.contains(error.code);
 
-/// Starts Firebase and opens the players collection, or returns null and
-/// leaves the app running entirely on local storage.
-Future<FirestorePlayers?> _connectPlayers(CloudMonitor monitor) async {
+/// Starts Firebase and wires up crash reporting.
+///
+/// False leaves the app running entirely on local storage, which is a
+/// complete game -- what is missing is the leaderboard and friend duels.
+Future<bool> _startFirebase(CloudMonitor monitor) async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
     _reportCrashes(monitor);
-    return await FirestorePlayers.connect(monitor: monitor);
+    return true;
   } catch (error) {
     debugPrint('MindRush: running offline only ($error)');
-    return null;
+    return false;
   }
 }
 
@@ -219,20 +356,38 @@ class MindRushApp extends ConsumerStatefulWidget {
 }
 
 class _MindRushAppState extends ConsumerState<MindRushApp> {
-  /// Read once, before the splash and the name prompt.
+  /// Where the app was asked to open, if it was a tapped invite link.
   ///
-  /// A guest arriving from WhatsApp without the app installed goes through the
-  /// intro and onboarding first, and only then is a router built. Reading the
-  /// launch route at that point happens to still work, but it is a fragile
-  /// thing to depend on -- so it is captured here, up front, and held.
-  late final String _launchRoute =
-      widget.launchRoute ??
-      WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+  /// [Boot] reads it from the platform on the very first frame and passes it
+  /// in, because by the time this widget exists the answer is two seconds
+  /// stale and has had a Google account picker in front of it. Falling back
+  /// to the platform here covers the case where nobody passed one.
+  String? _launchRoute;
 
   late final GoRouter _router = buildRouter(initialLocation: _launchRoute);
 
-  /// The animated intro plays once per launch, then never gets in the way.
-  bool _introFinished = false;
+  @override
+  void initState() {
+    super.initState();
+    _launchRoute = _challengeIn(
+      widget.launchRoute ??
+          WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+    );
+  }
+
+  /// [route] if it is a challenge link, and null for anything else.
+  ///
+  /// A challenge is the only reason this app should ever open anywhere but
+  /// home. Everything else the platform might hand over -- '/', a leftover
+  /// from the last session, whatever an account picker returns -- is not a
+  /// destination the player chose, and treating it as one is how signing in
+  /// landed somebody on the settings screen.
+  static String? _challengeIn(String? route) {
+    if (route == null) return null;
+    final uri = Uri.tryParse(route);
+    if (uri == null) return null;
+    return ChallengeInvite.parse(uri) == null ? null : route;
+  }
 
   @override
   void dispose() {
@@ -240,20 +395,11 @@ class _MindRushAppState extends ConsumerState<MindRushApp> {
     super.dispose();
   }
 
-  // Traffic controller to check if the user wrote his name or not and whether the intro is finished or not.
+  // Traffic controller to check whether the user has an account yet. The
+  // intro is behind us by the time this builds: it belongs to [Boot], which
+  // plays it before there is a store to build this tree around.
   @override
   Widget build(BuildContext context) {
-    // Is the intro finished?
-    if (!_introFinished) {
-      return MaterialApp(
-        title: 'MindRush',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        home: SplashScreen(
-          onFinished: () => setState(() => _introFinished = true),
-        ),
-      );
-    }
     // Is it a brand new player
     final needsName = ref.watch(
       profileProvider.select((p) => p.needsOnboarding),

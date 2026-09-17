@@ -421,6 +421,15 @@ void main() {
       router.go(AppRoutes.lobby('sprint-1'));
       await _tick(tester);
 
+      // Not straight away. A service that is missing because Firebase is
+      // still starting looks identical from here to one that is missing
+      // because there is no signal, and a guest off a tapped link is always
+      // in the first case -- so the screen waits before it says anything.
+      expect(find.textContaining('need an internet connection'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 13));
+      await tester.pumpAndSettle();
+
       expect(
         find.textContaining('need an internet connection'),
         findsOneWidget,
